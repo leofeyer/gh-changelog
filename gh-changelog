@@ -1,0 +1,170 @@
+#!/bin/bash
+set -eo pipefail
+
+die() {
+	echo -e "\033[0;31m$*\033[0m" >&2
+	exit 1
+}
+
+display_help() {
+	cat <<-EOF
+
+  usage:
+    gh changelog {milestone} {target}     Generate the changelog
+
+  [options]
+    -h, --help                            Display the help information
+
+	EOF
+}
+
+owner() {
+	gh repo view --json owner -q .owner.login
+}
+
+repo() {
+	gh repo view --json name -q .name
+}
+
+features() {
+	gh search prs \
+		--json author,url,closedAt,number,title \
+		--owner "$(owner)" \
+		--repo "$(repo)" \
+		--limit 500 \
+		--merged \
+		--milestone "$milestone" \
+		--label feature \
+		--template '{{range .}}{{.closedAt}}	FEATURE	{{.number}}	{{.title}}	{{.author.login}}{{"\n"}}{{end}}'
+}
+
+issues() {
+	gh search prs \
+		--json author,url,closedAt,number,title \
+		--owner "$(owner)" \
+		--repo "$(repo)" \
+		--limit 500 \
+		--merged \
+		--milestone "$milestone" \
+		--label bug \
+		--template '{{range .}}{{.closedAt}}	BUG	{{.number}}	{{.title}}	{{.author.login}}{{"\n"}}{{end}}'
+}
+
+labels() {
+	git tag \
+		--list "$milestone".'*' \
+		--sort=-creatordate \
+		--format='%(creatordate:iso-strict)	TAG	%(refname:short)'
+}
+
+changelog() {
+	local milestone="$1"
+
+	if [[ $milestone == "" ]]; then
+		die "No milestone given!"
+	fi
+
+	local target="$2"
+
+	if [[ $target == "" ]]; then
+		die "No target version given!"
+	fi
+
+	local temp_file
+	temp_file=$(mktemp "/tmp/gh-changelog.XXXXXX")
+	chmod 644 "$temp_file"
+
+	cat <<-EOF > "$temp_file"
+	# Changelog
+
+	This project adheres to [Semantic Versioning].
+
+	## [$target] ($(date +%F))
+	EOF
+
+	local url data tags features='' issues='' users='' prs=''
+	url="https://github.com/$(owner)/$(repo)"
+	data=$({ features "$milestone"; issues "$milestone"; labels "$milestone"; } | sort -r)
+	tags="[$target]: $url/releases/tag/$target"
+
+	while IFS=$'\t' read -r date type number title author; do
+		if [[ $type == 'TAG' ]]; then
+			if [[ $tags != "" ]]; then
+				tags+=$'\n'
+			fi
+
+			tags+="[$number]: $url/releases/tag/$number"
+
+			if [[ $features != "" ]]; then
+				echo -e "\n**New features:**\n\n$features" >> "$temp_file"
+			fi
+
+			if [[ $issues != "" ]]; then
+				echo -e "\n**Fixed issues:**\n\n$issues" >> "$temp_file"
+			fi
+
+			echo -e "\n## [$number] (${date:0:10})" >> "$temp_file"
+
+			features=''
+			issues=''
+		else
+			if [[ $users != "" ]]; then
+				users+=$'\n'
+			fi
+
+			users+="[$author]: https://github.com/$author"
+
+			if [[ $prs != "" ]]; then
+				prs+=$'\n'
+			fi
+
+			prs+="[#$number]: $url/pull/$number"
+
+			if [[ $type == 'FEATURE' ]]; then
+				if [[ $features != "" ]]; then
+					features+=$'\n'
+				fi
+
+				features+="- [#$number] $title ([$author])"
+			elif [[ $type == 'BUG' ]]; then
+				if [[ $issues != "" ]]; then
+					issues+=$'\n'
+				fi
+
+				issues+="- [#$number] $title ([$author])"
+			fi
+		fi
+	done <<< "$data"
+
+	if [[ $features != "" ]]; then
+		echo -e "\n**New features:**\n\n$features" >> "$temp_file"
+	fi
+
+	if [[ $issues != "" ]]; then
+		echo -e "\n**Fixed issues:**\n\n$issues" >> "$temp_file"
+	fi
+
+	echo -e "\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html" >> "$temp_file"
+	echo "$tags" | sort -r >> "$temp_file"
+
+	if [[ $users != "" ]]; then
+		echo "$users" | awk '!u[$0]++' | sort -f >> "$temp_file"
+	fi
+
+	if [[ $prs != "" ]]; then
+		echo "$prs" | sort >> "$temp_file"
+	fi
+
+	mv "$temp_file" ./CHANGELOG.md
+
+	echo -e "\033[0;32mThe CHANGELOG.md file has been updated.\033[0m"
+}
+
+case $1 in
+	-h | --help)
+		display_help
+		;;
+esac
+
+changelog "$@"
+exit 0
