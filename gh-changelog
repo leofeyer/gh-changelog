@@ -145,14 +145,14 @@ changelog() {
 	fi
 
 	echo -e "\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html" >> "$temp_file"
-	echo "$tags" | sort -r >> "$temp_file"
+	echo "$tags" | sort -Vr >> "$temp_file"
 
 	if [[ $users != "" ]]; then
 		echo "$users" | awk '!u[$0]++' | sort -f >> "$temp_file"
 	fi
 
 	if [[ $prs != "" ]]; then
-		echo "$prs" | sort >> "$temp_file"
+		echo "$prs" | sort -n >> "$temp_file"
 	fi
 
 	mv "$temp_file" ./CHANGELOG.md
