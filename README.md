@@ -9,10 +9,12 @@ of a milestone.
 $ gh changelog --help
 
   usage:
-    gh changelog {milestone} {target}     Generate the changelog
+    gh changelog              Generate the changelog
 
   [options]
-    -h, --help                            Display the help information
+    -m, --milestone           Set a specific milestone
+    -u, --unreleased          Set a version number for the unreleased changes
+    -h, --help                Display the help information
 ```
 
 ## Installation
