@@ -6,14 +6,20 @@ die() {
 	exit 1
 }
 
+confirm() {
+	echo -e "\033[0;32m✓\033[0m $*"
+}
+
 display_help() {
 	cat <<-EOF
 
   usage:
-    gh changelog {milestone} {target}     Generate the changelog
+    gh changelog              Generate the changelog
 
   [options]
-    -h, --help                            Display the help information
+    -m, --milestone           Set a specific milestone
+    -u, --unreleased          Set a version number for the unreleased changes
+    -h, --help                Display the help information
 
 	EOF
 }
@@ -31,9 +37,9 @@ features() {
 		--json author,url,closedAt,number,title \
 		--owner "$(owner)" \
 		--repo "$(repo)" \
-		--limit 500 \
+		--limit 1000 \
 		--merged \
-		--milestone "$milestone" \
+		--milestone "$MILESTONE" \
 		--label feature \
 		--template '{{range .}}{{.closedAt}}	FEATURE	{{.number}}	{{.title}}	{{.author.login}}{{"\n"}}{{end}}'
 }
@@ -43,31 +49,20 @@ issues() {
 		--json author,url,closedAt,number,title \
 		--owner "$(owner)" \
 		--repo "$(repo)" \
-		--limit 500 \
+		--limit 1000 \
 		--merged \
-		--milestone "$milestone" \
+		--milestone "$MILESTONE" \
 		--label bug \
-		--template '{{range .}}{{.closedAt}}	BUG	{{.number}}	{{.title}}	{{.author.login}}{{"\n"}}{{end}}'
+		--template '{{range .}}{{.closedAt}}	ISSUE	{{.number}}	{{.title}}	{{.author.login}}{{"\n"}}{{end}}'
 }
 
 labels() {
-	git tag \
-		--list "$milestone".'*' \
-		--sort=-creatordate \
-		--format='%(creatordate:iso-strict)	TAG	%(refname:short)'
+	git tag --list "$MILESTONE".'*' --sort=-creatordate --format='%(creatordate:iso-strict)	TAG	%(refname:short)'
 }
 
 changelog() {
-	local milestone="$1"
-
-	if [[ $milestone == "" ]]; then
-		die "No milestone given!"
-	fi
-
-	local target="$2"
-
-	if [[ $target == "" ]]; then
-		die "No target version given!"
+	if [[ $MILESTONE == "" ]]; then
+		MILESTONE=$(git rev-parse --abbrev-ref HEAD)
 	fi
 
 	local temp_file
@@ -79,13 +74,18 @@ changelog() {
 
 	This project adheres to [Semantic Versioning].
 
-	## [$target] ($(date +%F))
 	EOF
 
-	local url data tags features='' issues='' users='' prs=''
+	local features='' issues='' users='' prs='' tags='' url data
 	url="https://github.com/$(owner)/$(repo)"
-	data=$({ features "$milestone"; issues "$milestone"; labels "$milestone"; } | sort -r)
-	tags="[$target]: $url/releases/tag/$target"
+	data=$({ features; issues; labels; } | sort -r)
+
+	if [[ $UNRELEASED == "" ]]; then
+		echo "## [Unreleased]" >> "$temp_file"
+	else
+		echo "## [$UNRELEASED] ($(date +%F))" >> "$temp_file"
+		tags="[$UNRELEASED]: $url/releases/tag/$UNRELEASED"
+	fi
 
 	while IFS=$'\t' read -r date type number title author; do
 		if [[ $type == 'TAG' ]]; then
@@ -126,7 +126,7 @@ changelog() {
 				fi
 
 				features+="- [#$number] $title ([$author])"
-			elif [[ $type == 'BUG' ]]; then
+			elif [[ $type == 'ISSUE' ]]; then
 				if [[ $issues != "" ]]; then
 					issues+=$'\n'
 				fi
@@ -145,7 +145,10 @@ changelog() {
 	fi
 
 	echo -e "\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html" >> "$temp_file"
-	echo "$tags" | sort -Vr >> "$temp_file"
+
+	if [[ $tags != "" ]]; then
+		echo "$tags" | sort -Vr >> "$temp_file"
+	fi
 
 	if [[ $users != "" ]]; then
 		echo "$users" | awk '!u[$0]++' | sort -f >> "$temp_file"
@@ -156,15 +159,40 @@ changelog() {
 	fi
 
 	mv "$temp_file" ./CHANGELOG.md
-
-	echo -e "\033[0;32mThe CHANGELOG.md file has been updated.\033[0m"
+	confirm "The CHANGELOG.md file has been updated"
 }
 
-case $1 in
-	-h | --help)
-		display_help
-		;;
-esac
+MILESTONE=''
+UNRELEASED=''
+
+while (( "$#" )); do
+	case "$1" in
+		-h|--help)
+			display_help
+			exit 0
+			;;
+		-m|--milestone)
+			if [[ $2 == "" || ${2:0:1} == "-" ]]; then
+				die "No argument for $1 given"
+			fi
+			MILESTONE="$2"
+			shift 2
+			;;
+		-u|--unreleased)
+			if [[ $2 == "" || ${2:0:1} == "-" ]]; then
+				die "No argument for $1 given"
+			fi
+			UNRELEASED="$2"
+			shift 2
+			;;
+		-*)
+			die "Unsupported flag: $1"
+			;;
+		*)
+			die "Unknown argument: $1"
+			;;
+	esac
+done
 
 changelog "$@"
 exit 0
