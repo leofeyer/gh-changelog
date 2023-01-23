@@ -157,7 +157,7 @@ changelog() {
 	fi
 
 	if [[ $prs != "" ]]; then
-		echo "$prs" | sort -n >> "$temp_file"
+		echo "$prs" | sort -n -k1.3 >> "$temp_file"
 	fi
 
 	mv "$temp_file" ./CHANGELOG.md
