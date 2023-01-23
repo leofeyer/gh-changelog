@@ -217,5 +217,5 @@ stop_spinner() {
 
 trap stop_spinner EXIT
 
-changelog "$@"
+changelog
 exit 0
