@@ -57,7 +57,10 @@ issues() {
 }
 
 labels() {
-	git tag --list "$MILESTONE".'*' --sort=-creatordate --format='%(creatordate:iso-strict)	TAG	%(refname:short)'
+	TZ=UTC0 git tag \
+		--list "$MILESTONE".'*' \
+		--sort=-creatordate \
+		--format='%(creatordate:format-local:%Y-%m-%dT%H:%M:%SZ)	TAG	%(refname:short)'
 }
 
 changelog() {
