@@ -13,13 +13,11 @@ confirm() {
 display_help() {
 	cat <<-EOF
 
-  usage:
-    gh changelog              Generate the changelog
+Usage:  gh changelog {<milestone>} [options]
 
-  [options]
-    -m, --milestone           Set a specific milestone
-    -u, --unreleased          Set a version number for the unreleased changes
-    -h, --help                Display the help information
+Options:
+  -u, --unreleased   Set a version number for the unreleased changes
+  -h, --help         Display the help information
 
 	EOF
 }
@@ -169,7 +167,7 @@ changelog() {
 	confirm "The CHANGELOG.md file has been updated."
 }
 
-MILESTONE=''
+PARAMS=''
 UNRELEASED=''
 
 while (( "$#" )); do
@@ -177,13 +175,6 @@ while (( "$#" )); do
 		-h|--help)
 			display_help
 			exit 0
-			;;
-		-m|--milestone)
-			if [[ $2 == "" || ${2:0:1} == "-" ]]; then
-				die "No argument for $1 given."
-			fi
-			MILESTONE="$2"
-			shift 2
 			;;
 		-u|--unreleased)
 			if [[ $2 == "" || ${2:0:1} == "-" ]]; then
@@ -196,11 +187,15 @@ while (( "$#" )); do
 			die "Unsupported flag: $1"
 			;;
 		*)
-			die "Unknown argument: $1"
+			PARAMS="$PARAMS $1"
+			shift
 			;;
 	esac
 done
 
+eval set -- "$PARAMS"
+
+MILESTONE="$1"
 SPINNER=
 
 start_spinner() {
@@ -216,6 +211,6 @@ stop_spinner() {
 }
 
 trap stop_spinner EXIT
-
 changelog
+
 exit 0

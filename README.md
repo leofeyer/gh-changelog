@@ -8,13 +8,11 @@ of a milestone.
 ```bash
 $ gh changelog --help
 
-  usage:
-    gh changelog              Generate the changelog
+Usage:  gh changelog {<milestone>} [options]
 
-  [options]
-    -m, --milestone           Set a specific milestone
-    -u, --unreleased          Set a version number for the unreleased changes
-    -h, --help                Display the help information
+Options:
+  -u, --unreleased   Set a version number for the unreleased changes
+  -h, --help         Display the help information
 ```
 
 ## Installation
