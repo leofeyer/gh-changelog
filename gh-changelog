@@ -199,15 +199,18 @@ MILESTONE="$1"
 SPINNER=
 
 start_spinner() {
-    set +m
-    { while : ; do for i in '⣾' '⣽' '⣻' '⢿' '⡿' '⣟' '⣯' '⣷' ; do echo -en "\b\033[36m$i\033[0m" ; sleep 0.1 ; done ; done & } 2>/dev/null
-    SPINNER=$!
+	tput civis
+	trap 'tput cnorm' EXIT
+	set +m
+	{ while : ; do for i in '⣷' '⣯' '⣟' '⡿' '⢿' '⣻' '⣽' '⣾'; do echo -en "\b\033[36m$i\033[0m" ; sleep 0.1 ; done ; done & } 2>/dev/null
+	SPINNER=$!
 }
 
 stop_spinner() {
-    { kill -9 $SPINNER && wait; } 2>/dev/null
-    set -m
-    echo -en "\033[2K\r"
+	{ kill -9 $SPINNER && wait; } 2>/dev/null
+	set -m
+	echo -en "\033[2K\r"
+	tput cnorm
 }
 
 trap stop_spinner EXIT
