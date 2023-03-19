@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"os/exec"
 	"sort"
 	"strings"
@@ -126,12 +127,18 @@ func getRepo() (string, error) {
 }
 
 func getTags(milestone string) ([]Item, error) {
-	cmd := "TZ=UTC0 git tag"
-	cmd += " --list " + milestone + ".*"
-	cmd += " --sort=-creatordate"
-	cmd += " --format '%(creatordate:format-local:%Y-%m-%dT%H:%M:%SZ),%(refname:short)'"
+	args := []string{
+		"tag",
+		"--list", milestone + ".*",
+		"--sort", "-creatordate",
+		"--format", "%(creatordate:format-local:%Y-%m-%dT%H:%M:%SZ),%(refname:short)",
+	}
 
-	out, err := exec.Command("bash", "-c", cmd).Output()
+	cmd := exec.Command("git", args...)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "TZ=UTC0")
+
+	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
@@ -161,15 +168,16 @@ func getTags(milestone string) ([]Item, error) {
 }
 
 func search(milestone string, label string, owner string, repo string) ([]Item, error) {
-	var args []string
-	args = append(args, "search", "prs")
-	args = append(args, "--json", "number,title,author,url,closedAt")
-	args = append(args, "--owner", owner)
-	args = append(args, "--repo", repo)
-	args = append(args, "--milestone", milestone)
-	args = append(args, "--merged")
-	args = append(args, "--limit", "1000")
-	args = append(args, "--label", label)
+	args := []string{
+		"search", "prs",
+		"--json", "number,title,author,url,closedAt",
+		"--owner", owner,
+		"--repo", repo,
+		"--milestone", milestone,
+		"--label", label,
+		"--limit", "1000",
+		"--merged",
+	}
 
 	data, _, err := gh.Exec(args...)
 	if err != nil {
