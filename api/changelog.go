@@ -224,12 +224,10 @@ func getContent(items []Item, owner string, repo string, version string) string 
 
 	for i := 0; i < len(items); i++ {
 		if items[i].Type == "tag" {
-			content += addSection(features, issues)
+			content += addSection(&features, &issues)
 			content += fmt.Sprintf("\n## [%s] (%s)\n", items[i].Title, items[i].Time[0:10])
 
 			tags = append(tags, fmt.Sprintf("[%s]: %s/releases/tag/%[1]s\n", items[i].Title, url))
-			features = features[:0]
-			issues = issues[:0]
 		} else {
 			if items[i].Type == "feature" {
 				features = append(features, items[i])
@@ -242,7 +240,7 @@ func getContent(items []Item, owner string, repo string, version string) string 
 		}
 	}
 
-	content += addSection(features, issues)
+	content += addSection(&features, &issues)
 	content += "\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html\n"
 
 	for i := 0; i < len(tags); i++ {
@@ -260,27 +258,27 @@ func getContent(items []Item, owner string, repo string, version string) string 
 	return content
 }
 
-func addSection(features []Item, issues []Item) string {
+func addSection(features *[]Item, issues *[]Item) string {
 	r := ""
 
-	if len(features) > 0 {
+	if len(*features) > 0 {
 		r += "\n**New features:**\n\n"
 
-		for j := 0; j < len(features); j++ {
-			r += fmt.Sprintf("- [#%d] %s ([%s])\n", features[j].Number, features[j].Title, features[j].Author)
+		for _, f := range *features {
+			r += fmt.Sprintf("- [#%d] %s ([%s])\n", f.Number, f.Title, f.Author)
 		}
 
-		features = features[:0]
+		*features = nil
 	}
 
-	if len(issues) > 0 {
+	if len(*issues) > 0 {
 		r += "\n**Fixed issues:**\n\n"
 
-		for j := 0; j < len(issues); j++ {
-			r += fmt.Sprintf("- [#%d] %s ([%s])\n", issues[j].Number, issues[j].Title, issues[j].Author)
+		for _, i := range *issues {
+			r += fmt.Sprintf("- [#%d] %s ([%s])\n", i.Number, i.Title, i.Author)
 		}
 
-		issues = issues[:0]
+		*issues = nil
 	}
 
 	return r
