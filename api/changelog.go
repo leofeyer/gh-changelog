@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/akutz/sortfold"
 	"github.com/briandowns/spinner"
 	"github.com/cli/go-gh"
-	"github.com/leofeyer/gh-changelog/util"
 	"github.com/natefinch/atomic"
 )
 
@@ -293,7 +293,9 @@ func getUserKeys(users map[string]string) []string {
 		keys = append(keys, k)
 	}
 
-	sort.Slice(keys, func(i, j int) bool { return util.SortCaseInsensitive(keys[i], keys[j]) })
+	sort.Slice(keys, func(i, j int) bool {
+		return sortfold.CompareFold(keys[i], keys[j]) < 0
+	})
 
 	return keys
 }

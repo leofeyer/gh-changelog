@@ -3,6 +3,7 @@ module github.com/leofeyer/gh-changelog
 go 1.18
 
 require (
+	github.com/akutz/sortfold v0.2.1
 	github.com/briandowns/spinner v1.23.0
 	github.com/cli/go-gh v1.2.1
 	github.com/natefinch/atomic v1.0.1
