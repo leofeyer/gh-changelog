@@ -30,25 +30,19 @@ func Changelog(milestone string, version string) error {
 	s := spinner.New(spinner.CharSets[11], 120*time.Millisecond)
 	s.Start()
 
-	owner, err := getOwner()
+	repo, err := gh.CurrentRepository()
 	if err != nil {
 		s.Stop()
 		return err
 	}
 
-	repo, err := getRepo()
+	items, err := getItems(milestone, repo.Owner(), repo.Name())
 	if err != nil {
 		s.Stop()
 		return err
 	}
 
-	items, err := getItems(milestone, owner, repo)
-	if err != nil {
-		s.Stop()
-		return err
-	}
-
-	r := strings.NewReader(getContent(items, owner, repo, version))
+	r := strings.NewReader(getContent(items, repo.Owner(), repo.Name(), version))
 	atomic.WriteFile("./CHANGELOG.md", r)
 
 	s.Stop()
@@ -82,48 +76,6 @@ func getItems(milestone string, owner string, repo string) ([]Item, error) {
 	})
 
 	return items, nil
-}
-
-func getOwner() (string, error) {
-	data, _, err := gh.Exec("repo", "view", "--json", "owner")
-	if err != nil {
-		return "", err
-	}
-
-	type Result struct {
-		Owner struct {
-			Login string `json:"login"`
-		}
-	}
-
-	var r Result
-
-	err = json.Unmarshal(data.Bytes(), &r)
-	if err != nil {
-		return "", err
-	}
-
-	return r.Owner.Login, nil
-}
-
-func getRepo() (string, error) {
-	data, _, err := gh.Exec("repo", "view", "--json", "name")
-	if err != nil {
-		return "", err
-	}
-
-	type Result struct {
-		Name string `json:"name"`
-	}
-
-	var r Result
-
-	err = json.Unmarshal(data.Bytes(), &r)
-	if err != nil {
-		return "", err
-	}
-
-	return r.Name, nil
 }
 
 func getTags(milestone string) ([]Item, error) {
