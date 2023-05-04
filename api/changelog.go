@@ -179,6 +179,10 @@ func getContent(items []Item, owner string, repo string, version string) string 
 	prs := make(map[int]string)
 	url := "https://github.com/" + owner + "/" + repo
 
+	if version != "Unreleased" {
+		tags = append(tags, fmt.Sprintf("[%s]: %s/releases/tag/%[1]s\n", version, url))
+	}
+
 	content := "# Changelog\n\nThis project adheres to [Semantic Versioning].\n\n"
 	content += fmt.Sprintf("## [%s] (%s)\n", version, time.Now().Format("2006-01-02"))
 
