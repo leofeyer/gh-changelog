@@ -26,6 +26,13 @@ type Item struct {
 	Author string
 }
 
+type Cve struct {
+	Id       string
+	Title    string
+	Url      string
+	Versions []string
+}
+
 func Changelog(milestone string, version string) error {
 	s := spinner.New(spinner.CharSets[11], 120*time.Millisecond)
 	s.Start()
@@ -36,13 +43,22 @@ func Changelog(milestone string, version string) error {
 		return err
 	}
 
-	items, err := getItems(milestone, repo.Owner(), repo.Name())
+	owner := repo.Owner()
+	name := repo.Name()
+
+	items, err := getItems(milestone, owner, name)
 	if err != nil {
 		s.Stop()
 		return err
 	}
 
-	r := strings.NewReader(getContent(items, repo.Owner(), repo.Name(), version))
+	cves, err := getCves(owner, name)
+	if err != nil {
+		s.Stop()
+		return err
+	}
+
+	r := strings.NewReader(getContent(items, cves, owner, name, version))
 	atomic.WriteFile("./CHANGELOG.md", r)
 
 	s.Stop()
@@ -170,10 +186,56 @@ func search(milestone string, label string, owner string, repo string) ([]Item, 
 	return items, nil
 }
 
-func getContent(items []Item, owner string, repo string, version string) string {
+func getCves(owner string, repo string) ([]Cve, error) {
+	args := []string{
+		"api",
+		"-X", "GET",
+		"-F", "state=published",
+		"repos/" + owner + "/" + repo + "/security-advisories",
+	}
+
+	data, _, err := gh.Exec(args...)
+	if err != nil {
+		return nil, err
+	}
+
+	type SecurityAdvisory struct {
+		Title           string `json:"summary"`
+		Cve             string `json:"cve_id"`
+		Url             string `json:"html_url"`
+		Vulnerabilities []struct {
+			PatchedVersions string `json:"patched_versions"`
+		}
+	}
+
+	var s []SecurityAdvisory
+
+	err = json.Unmarshal(data.Bytes(), &s)
+	if err != nil {
+		return nil, err
+	}
+
+	var cves []Cve
+
+	for i := 0; i < len(s); i++ {
+		var cve Cve
+		cve.Id = s[i].Cve
+		cve.Title = s[i].Title
+		cve.Url = s[i].Url
+		cve.Versions = strings.Split(s[i].Vulnerabilities[0].PatchedVersions, ", ")
+
+		cves = append(cves, cve)
+	}
+
+	return cves, nil
+}
+
+func getContent(items []Item, cves []Cve, owner string, repo string, version string) string {
 	var tags []string
 	var features []Item
 	var issues []Item
+	var security []Cve
+	var advisories []string
 
 	users := make(map[string]string)
 	prs := make(map[int]string)
@@ -188,8 +250,18 @@ func getContent(items []Item, owner string, repo string, version string) string 
 
 	for i := 0; i < len(items); i++ {
 		if items[i].Type == "tag" {
+			for j := 0; j < len(cves); j++ {
+				for _, val := range cves[j].Versions {
+					if val == items[i].Title {
+						security = append(security, cves[j])
+						advisories = append(advisories, fmt.Sprintf("[%s]: %s\n", cves[j].Id, cves[j].Url))
+					}
+				}
+			}
+
 			content += addSection(&features, &issues)
 			content += fmt.Sprintf("\n## [%s] (%s)\n", items[i].Title, items[i].Time[0:10])
+			content += addSecurity(&security)
 
 			tags = append(tags, fmt.Sprintf("[%s]: %s/releases/tag/%[1]s\n", items[i].Title, url))
 		} else {
@@ -204,11 +276,16 @@ func getContent(items []Item, owner string, repo string, version string) string 
 		}
 	}
 
+	content += addSecurity(&security)
 	content += addSection(&features, &issues)
 	content += "\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html\n"
 
 	for i := 0; i < len(tags); i++ {
 		content += tags[i]
+	}
+
+	for i := 0; i < len(advisories); i++ {
+		content += advisories[i]
 	}
 
 	for _, k := range getUserKeys(users) {
@@ -243,6 +320,22 @@ func addSection(features *[]Item, issues *[]Item) string {
 		}
 
 		*issues = nil
+	}
+
+	return r
+}
+
+func addSecurity(cves *[]Cve) string {
+	r := ""
+
+	if len(*cves) > 0 {
+		r += "\n**Security fixes:**\n\n"
+
+		for _, c := range *cves {
+			r += fmt.Sprintf("- [%s]: %s\n", c.Id, c.Title)
+		}
+
+		*cves = nil
 	}
 
 	return r
