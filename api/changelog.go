@@ -43,22 +43,21 @@ func Changelog(milestone string, version string) error {
 		return err
 	}
 
-	owner := repo.Owner()
-	name := repo.Name()
+	slug := fmt.Sprintf("%s/%s", repo.Owner(), repo.Name())
 
-	items, err := getItems(milestone, owner, name)
+	items, err := getItems(slug, milestone)
 	if err != nil {
 		s.Stop()
 		return err
 	}
 
-	cves, err := getCves(owner, name)
+	cves, err := getCves(slug)
 	if err != nil {
 		s.Stop()
 		return err
 	}
 
-	r := strings.NewReader(getContent(items, cves, owner, name, version))
+	r := strings.NewReader(getContent(items, cves, slug, version))
 	atomic.WriteFile("./CHANGELOG.md", r)
 
 	s.Stop()
@@ -66,18 +65,18 @@ func Changelog(milestone string, version string) error {
 	return nil
 }
 
-func getItems(milestone string, owner string, repo string) ([]Item, error) {
+func getItems(repo string, milestone string) ([]Item, error) {
 	tags, err := getTags(milestone)
 	if err != nil {
 		return nil, err
 	}
 
-	features, err := search(milestone, "feature", owner, repo)
+	features, err := search(repo, milestone, "feature")
 	if err != nil {
 		return nil, err
 	}
 
-	issues, err := search(milestone, "bug", owner, repo)
+	issues, err := search(repo, milestone, "bug")
 	if err != nil {
 		return nil, err
 	}
@@ -135,11 +134,10 @@ func getTags(milestone string) ([]Item, error) {
 	return items, nil
 }
 
-func search(milestone string, label string, owner string, repo string) ([]Item, error) {
+func search(repo string, milestone string, label string) ([]Item, error) {
 	args := []string{
 		"search", "prs",
 		"--json", "number,title,author,url,closedAt",
-		"--owner", owner,
 		"--repo", repo,
 		"--milestone", milestone,
 		"--label", label,
@@ -186,12 +184,12 @@ func search(milestone string, label string, owner string, repo string) ([]Item, 
 	return items, nil
 }
 
-func getCves(owner string, repo string) ([]Cve, error) {
+func getCves(repo string) ([]Cve, error) {
 	args := []string{
 		"api",
 		"-X", "GET",
 		"-F", "state=published",
-		"repos/" + owner + "/" + repo + "/security-advisories",
+		"repos/" + repo + "/security-advisories",
 	}
 
 	data, _, err := gh.Exec(args...)
@@ -230,7 +228,7 @@ func getCves(owner string, repo string) ([]Cve, error) {
 	return cves, nil
 }
 
-func getContent(items []Item, cves []Cve, owner string, repo string, version string) string {
+func getContent(items []Item, cves []Cve, repo string, version string) string {
 	var tags []string
 	var features []Item
 	var issues []Item
@@ -239,7 +237,7 @@ func getContent(items []Item, cves []Cve, owner string, repo string, version str
 
 	users := make(map[string]string)
 	prs := make(map[int]string)
-	url := "https://github.com/" + owner + "/" + repo
+	url := "https://github.com/" + repo
 
 	if version != "Unreleased" {
 		tags = append(tags, fmt.Sprintf("[%s]: %s/releases/tag/%[1]s\n", version, url))
