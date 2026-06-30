@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -13,7 +14,8 @@ import (
 
 	"github.com/akutz/sortfold"
 	"github.com/briandowns/spinner"
-	"github.com/cli/go-gh"
+	"github.com/cli/go-gh/v2"
+	"github.com/cli/go-gh/v2/pkg/repository"
 	"github.com/natefinch/atomic"
 )
 
@@ -37,13 +39,13 @@ func Changelog(milestone string, version string) error {
 	s := spinner.New(spinner.CharSets[11], 120*time.Millisecond)
 	s.Start()
 
-	repo, err := gh.CurrentRepository()
+	repo, err := repository.Current()
 	if err != nil {
 		s.Stop()
 		return err
 	}
 
-	slug := fmt.Sprintf("%s/%s", repo.Owner(), repo.Name())
+	slug := fmt.Sprintf("%s/%s", repo.Owner, repo.Name)
 
 	items, err := getItems(slug, milestone)
 	if err != nil {
@@ -58,7 +60,11 @@ func Changelog(milestone string, version string) error {
 	}
 
 	r := strings.NewReader(getContent(items, cves, slug, version))
-	atomic.WriteFile("./CHANGELOG.md", r)
+
+	if err := atomic.WriteFile("./CHANGELOG.md", r); err != nil {
+		s.Stop()
+		return err
+	}
 
 	s.Stop()
 	fmt.Println("The CHANGELOG.md file has been updated.")
@@ -111,7 +117,7 @@ func getTags(milestone string) ([]Item, error) {
 	}
 
 	var items []Item
-	r := csv.NewReader(strings.NewReader(fmt.Sprintf("%s", out)))
+	r := csv.NewReader(bytes.NewReader(out))
 
 	for {
 		fields, err := r.Read()
@@ -121,6 +127,10 @@ func getTags(milestone string) ([]Item, error) {
 
 		if err != nil {
 			return nil, err
+		}
+
+		if len(fields) < 2 {
+			continue
 		}
 
 		var item Item
@@ -150,7 +160,7 @@ func search(repo string, milestone string, label string) ([]Item, error) {
 		return nil, err
 	}
 
-	type PullRequest struct {
+	var r []struct {
 		Time   string `json:"closedAt"`
 		Title  string `json:"title"`
 		Number int    `json:"number"`
@@ -160,10 +170,7 @@ func search(repo string, milestone string, label string) ([]Item, error) {
 		}
 	}
 
-	var r []PullRequest
-
-	err = json.Unmarshal(data.Bytes(), &r)
-	if err != nil {
+	if err := json.Unmarshal(data.Bytes(), &r); err != nil {
 		return nil, err
 	}
 
@@ -197,7 +204,7 @@ func getCves(repo string) ([]Cve, error) {
 		return nil, err
 	}
 
-	type SecurityAdvisory struct {
+	var s []struct {
 		Title           string `json:"summary"`
 		Cve             string `json:"cve_id"`
 		Url             string `json:"html_url"`
@@ -206,10 +213,7 @@ func getCves(repo string) ([]Cve, error) {
 		}
 	}
 
-	var s []SecurityAdvisory
-
-	err = json.Unmarshal(data.Bytes(), &s)
-	if err != nil {
+	if err := json.Unmarshal(data.Bytes(), &s); err != nil {
 		return nil, err
 	}
 
@@ -220,7 +224,11 @@ func getCves(repo string) ([]Cve, error) {
 		cve.Id = s[i].Cve
 		cve.Title = s[i].Title
 		cve.Url = s[i].Url
-		cve.Versions = strings.Split(s[i].Vulnerabilities[0].PatchedVersions, ", ")
+
+		cve.Versions = nil
+		if len(s[i].Vulnerabilities) > 0 {
+			cve.Versions = strings.Split(s[i].Vulnerabilities[0].PatchedVersions, ", ")
+		}
 
 		cves = append(cves, cve)
 	}
@@ -243,12 +251,13 @@ func getContent(items []Item, cves []Cve, repo string, version string) string {
 		tags = append(tags, fmt.Sprintf("[%s]: %s/releases/tag/%[1]s\n", version, url))
 	}
 
-	content := "# Changelog\n\nThis project adheres to [Semantic Versioning].\n\n"
-	content += fmt.Sprintf("## [%s] (%s)\n", version, time.Now().Format("2006-01-02"))
+	var content strings.Builder
+	content.WriteString("# Changelog\n\nThis project adheres to [Semantic Versioning].\n\n")
+	fmt.Fprintf(&content, "## [%s] (%s)\n", version, time.Now().Format("2006-01-02"))
 
-	for i := 0; i < len(items); i++ {
+	for i := range items {
 		if items[i].Type == "tag" {
-			for j := 0; j < len(cves); j++ {
+			for j := range cves {
 				for _, val := range cves[j].Versions {
 					if val == items[i].Title {
 						security = append(security, cves[j])
@@ -257,15 +266,21 @@ func getContent(items []Item, cves []Cve, repo string, version string) string {
 				}
 			}
 
-			content += addSection(&features, &issues)
-			content += fmt.Sprintf("\n## [%s] (%s)\n", items[i].Title, items[i].Time[0:10])
-			content += addSecurity(&security)
+			tagTime := items[i].Time
+			if len(tagTime) >= 10 {
+				tagTime = tagTime[0:10]
+			}
+
+			content.WriteString(addSection(&features, &issues))
+			fmt.Fprintf(&content, "\n## [%s] (%s)\n", items[i].Title, tagTime)
+			content.WriteString(addSecurity(&security))
 
 			tags = append(tags, fmt.Sprintf("[%s]: %s/releases/tag/%[1]s\n", items[i].Title, url))
 		} else {
-			if items[i].Type == "feature" {
+			switch items[i].Type {
+			case "feature":
 				features = append(features, items[i])
-			} else if items[i].Type == "bug" {
+			case "bug":
 				issues = append(issues, items[i])
 			}
 
@@ -274,69 +289,69 @@ func getContent(items []Item, cves []Cve, repo string, version string) string {
 		}
 	}
 
-	content += addSecurity(&security)
-	content += addSection(&features, &issues)
-	content += "\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html\n"
+	content.WriteString(addSecurity(&security))
+	content.WriteString(addSection(&features, &issues))
+	content.WriteString("\n[Semantic Versioning]: https://semver.org/spec/v2.0.0.html\n")
 
 	for i := 0; i < len(tags); i++ {
-		content += tags[i]
+		content.WriteString(tags[i])
 	}
 
 	for i := 0; i < len(advisories); i++ {
-		content += advisories[i]
+		content.WriteString(advisories[i])
 	}
 
 	for _, k := range getUserKeys(users) {
-		content += users[k]
+		content.WriteString(users[k])
 	}
 
 	for _, k := range getPrKeys(prs) {
-		content += prs[k]
+		content.WriteString(prs[k])
 	}
 
-	return content
+	return content.String()
 }
 
 func addSection(features *[]Item, issues *[]Item) string {
-	r := ""
+	var r strings.Builder
 
 	if len(*features) > 0 {
-		r += "\n**New features:**\n\n"
+		r.WriteString("\n**New features:**\n\n")
 
 		for _, f := range *features {
-			r += fmt.Sprintf("- [#%d] %s ([%s])\n", f.Number, f.Title, f.Author)
+			fmt.Fprintf(&r, "- [#%d] %s ([%s])\n", f.Number, f.Title, f.Author)
 		}
 
 		*features = nil
 	}
 
 	if len(*issues) > 0 {
-		r += "\n**Fixed issues:**\n\n"
+		r.WriteString("\n**Fixed issues:**\n\n")
 
 		for _, i := range *issues {
-			r += fmt.Sprintf("- [#%d] %s ([%s])\n", i.Number, i.Title, i.Author)
+			fmt.Fprintf(&r, "- [#%d] %s ([%s])\n", i.Number, i.Title, i.Author)
 		}
 
 		*issues = nil
 	}
 
-	return r
+	return r.String()
 }
 
 func addSecurity(cves *[]Cve) string {
-	r := ""
+	var r strings.Builder
 
 	if len(*cves) > 0 {
-		r += "\n**Security fixes:**\n\n"
+		r.WriteString("\n**Security fixes:**\n\n")
 
 		for _, c := range *cves {
-			r += fmt.Sprintf("- [%s]: %s\n", c.Id, c.Title)
+			fmt.Fprintf(&r, "- [%s]: %s\n", c.Id, c.Title)
 		}
 
 		*cves = nil
 	}
 
-	return r
+	return r.String()
 }
 
 func getUserKeys(users map[string]string) []string {

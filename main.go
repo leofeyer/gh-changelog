@@ -21,8 +21,7 @@ func rootCmd() *cobra.Command {
 				version = args[1]
 			}
 
-			err := api.Changelog(milestone, version)
-			if err != nil {
+			if err := api.Changelog(milestone, version); err != nil {
 				return err
 			}
 
@@ -36,8 +35,7 @@ func rootCmd() *cobra.Command {
 }
 
 func main() {
-	err := rootCmd().Execute()
-	if err != nil {
+	if err := rootCmd().Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "%s\n", err)
 		os.Exit(1)
 	}
